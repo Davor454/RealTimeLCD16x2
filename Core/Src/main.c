@@ -20,6 +20,7 @@
 #include "main.h"
 #include "i2c.h"
 #include "rtc.h"
+#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -27,6 +28,8 @@
 #include "i2c_lcd.h"
 #include "stm32f1xx_hal.h"
 #include "rtc.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,7 +49,10 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-
+extern UART_HandleTypeDef huart1;
+	char uart_rx_char;
+	char uart_buffer[40];
+	uint8_t uart_index = 0;
 /* USER CODE BEGIN PV */
 	char time[10];
 	char date[10];
@@ -54,12 +60,61 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
+void parse_and_set_time(char *str);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void parse_and_set_time(char *str)
+{
+    int y, m, d, hh, mm, ss;
+
+    if (sscanf(str, "T:%d-%d-%d %d:%d:%d",
+               &y, &m, &d, &hh, &mm, &ss) == 6)
+    {
+        RTC_TimeTypeDef time = {0};
+        RTC_DateTypeDef date = {0};
+
+        time.Hours   = ((hh / 10) << 4) | (hh % 10);
+        time.Minutes = ((mm / 10) << 4) | (mm % 10);
+        time.Seconds = ((ss / 10) << 4) | (ss % 10);
+
+        date.Date  = ((d / 10) << 4) | (d % 10);
+        date.Month = m;
+        date.Year  = ((y - 2000) / 10 << 4) | ((y - 2000) % 10);
+
+        HAL_RTC_SetTime(&hrtc, &time, RTC_FORMAT_BCD);
+        HAL_RTC_SetDate(&hrtc, &date, RTC_FORMAT_BCD);
+
+        HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, 0x32F2);
+    }
+}
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+if (huart->Instance == USART1)
+    {
+        if (uart_rx_char == '\n')
+        {
+            uart_buffer[uart_index] = '\0';
+            parse_and_set_time(uart_buffer);
+            uart_index = 0;
+        }
+        else
+        {
+            if (uart_index < sizeof(uart_buffer) - 1)
+            {
+                uart_buffer[uart_index++] = uart_rx_char;
+            }
+        }
+
+        HAL_UART_Receive_IT(&huart1, (uint8_t *)&uart_rx_char, 1);
+    }
+}
 void set_timeFromCompile(void)
 {
 	RTC_TimeTypeDef sTime = {0};
@@ -166,15 +221,7 @@ void get_Time()
 	            BCD2DEC(gDate.Year)
 //				BCD2DEC(gDate.WeekDay)
 				);
-//	RTC_DateTypeDef gDate;
-//	RTC_TimeTypeDef gTime;
-//
-//	HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BCD);
-//	HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BCD);
-//
-//	sprintf(time, "%02d:%02d:%02d", BCD2DEC(gTime.Hours),BCD2DEC(gTime.Minutes),BCD2DEC(gTime.Seconds));
-//	//dd-mm-yy-wd
-//	sprintf(date, "%02d-%02d-%02d-%02d", BCD2DEC(gDate.Date),BCD2DEC(gDate.Month),2026 + BCD2DEC(gDate.Year), BCD2DEC(gDate.WeekDay));
+
 }
 
 void display_time(void)
@@ -217,21 +264,24 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_RTC_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   lcd_init();
   /* USER CODE END 2 */
-   if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != 0x32F2) //
-  {
-//	  set_time();
-	   set_timeFromCompile();
-  }
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-//#define STEFANI
+#define STEFANI
+//  if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != 0x32F2) //
+//  {
+//	  //set_time();
+//	   set_timeFromCompile();
+//  }
+  static uint32_t last = 0;
   while (1)
   {
     /* USER CODE END WHILE */
-#ifdef STEFANI
+#ifndef STEFANI
 	  lcd_put_cursor(0, 0);
 	  lcd_send_string("Hello Stefani <3!");
 	  lcd_put_cursor(1, 0);
@@ -240,9 +290,11 @@ int main(void)
 #endif
 //	  lcd_put_cursor(0, 0);
 //	  lcd_send_string("Hello Stefani <3!");
-	   get_Time();
-	   display_time();
-	   HAL_Delay(500);
+		if (HAL_GetTick() - last >= 1000) {
+			get_Time();
+			display_time();
+			HAL_Delay(500);
+		}
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
