@@ -268,15 +268,15 @@ int main(void)
   /* USER CODE BEGIN 2 */
   lcd_init();
   /* USER CODE END 2 */
-
+  HAL_UART_Receive_IT(&huart1, (uint8_t *)&uart_rx_char, 1);
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 #define STEFANI
-//  if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != 0x32F2) //
-//  {
-//	  //set_time();
+  if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != 0x32F2) //
+  {
+//	  set_time();
 //	   set_timeFromCompile();
-//  }
+  }
   static uint32_t last = 0;
   while (1)
   {

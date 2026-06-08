@@ -74,8 +74,10 @@ void HAL_MspInit(void)
 
   /** DISABLE: JTAG-DP Disabled and SW-DP Disabled
   */
-  __HAL_AFIO_REMAP_SWJ_DISABLE();
+//  __HAL_AFIO_REMAP_SWJ_DISABLE();
 
+  /* If you need to free JTAG pins (PB3, PB4, PA15) use this instead: */
+      __HAL_AFIO_REMAP_SWJ_NOJTAG();      // disables JTAG, KEEPS SWD alive
   /* USER CODE BEGIN MspInit 1 */
 
   /* USER CODE END MspInit 1 */
