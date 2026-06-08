@@ -2,7 +2,7 @@ import serial
 from datetime import datetime
 import time
 
-ser = serial.Serial("COM5", 115200, timeout=1) #Change "COM5" to your actual COM port.
+ser = serial.Serial("COM3", 115200, timeout=1) #Change "COM5" to your actual COM port.
 time.sleep(2)
 
 now = datetime.now()
