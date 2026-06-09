@@ -11,6 +11,5 @@ USART1 of the board, the LCD 2x16 will display the time date and day of week eve
 I saved the values of the rtc date and day of week into backup registers, and i read them back on every boot, but first I check if
 weather this is the First boot using a magic number written on the first boot in DR1 backup register.
 
-TODO: call the python script from the project not from cmd 
-TODO: implement alarm with buzzer
-TODO: implement rfid to light up green diode on OK and 1 beep, red diode and long beep on NOTOK
+TODO: call the python script from the project not from cmd; implement alarm with buzzer
+implement RFID to light up green diode on OK and 1 beep, red diode and long beep on NOTOK
