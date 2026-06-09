@@ -30,8 +30,9 @@
 #include "rtc.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
-
+#define STEFANI
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define BCD2DEC(x) (((x) >> 4) * 10 + ((x) & 0x0F))
@@ -68,9 +69,49 @@ void parse_and_set_time(char *str);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/*Store date and weekday int BKP register*/
+static void RTC_Store_DateWeekDayIntoBkpReg(RTC_DateTypeDef* dateRtc)
+{
+	uint32_t dateToStore;
+
+	memcpy(&dateToStore, dateRtc, sizeof(dateToStore));
+
+	HAL_RTCEx_BKUPWrite( &hrtc, RTC_BKP_DR2, (dateToStore >> 16)	);
+
+	HAL_RTCEx_BKUPWrite( &hrtc, RTC_BKP_DR3, (dateToStore & 0xFFFF) );
+
+}
+
+static void RTC_LoadDateFromBkpReg(RTC_DateTypeDef* dateRtc)
+{
+	uint32_t dateToStore;
+	if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1)!=0x32F2)
+	{
+		dateRtc->WeekDay = RTC_WEEKDAY_SATURDAY;
+		dateRtc->Month   = RTC_MONTH_JANUARY;
+		dateRtc->Date    = 1;
+		dateRtc->Year    = 0;  // = 2000
+		return;
+	}
+	dateToStore = HAL_RTCEx_BKUPRead( &hrtc, RTC_BKP_DR3 );
+
+	dateToStore |= ( HAL_RTCEx_BKUPRead( &hrtc, RTC_BKP_DR2 ) << 16 );
+
+	memcpy( dateRtc, &dateToStore, sizeof(dateToStore) );
+}
+
+static uint8_t calculate_weekday(int y, int m, int d)
+{
+    static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+    if (m < 3) y--;
+    int dow = (y + y/4 - y/100 + y/400 + t[m-1] + d) % 7;
+    // dow: 0=Sunday, HAL: Mon=1...Sun=7
+    return (dow == 0) ? RTC_WEEKDAY_SUNDAY : dow;
+}
+
 void parse_and_set_time(char *str)
 {
-    int y, m, d, hh, mm, ss;
+    int y, m, d, hh, mm, ss, weekday;
 
     if (sscanf(str, "T:%d-%d-%d %d:%d:%d",
                &y, &m, &d, &hh, &mm, &ss) == 6)
@@ -79,20 +120,22 @@ void parse_and_set_time(char *str)
         RTC_DateTypeDef date = {0};
 
         time.Hours   = ((hh / 10) << 4) | (hh % 10);
-        time.Minutes = ((mm / 10) << 4) | (mm % 10);
-        time.Seconds = ((ss / 10) << 4) | (ss % 10);
+		time.Minutes = ((mm / 10) << 4) | (mm % 10);
+		time.Seconds = ((ss / 10) << 4) | (ss % 10);
 
-        date.Date  = ((d / 10) << 4) | (d % 10);
-        date.Month = m;
-        date.Year  = ((y - 2000) / 10 << 4) | ((y - 2000) % 10);
+		date.Date  = ((d / 10) << 4) | (d % 10);
+		date.Month = date.Month = ((m / 10) << 4) | (m % 10); //m;
+		date.Year  = ((y - 2000) / 10 << 4) | ((y - 2000) % 10);
+//        date.WeekDay = weekday;
+
 
         HAL_RTC_SetTime(&hrtc, &time, RTC_FORMAT_BCD);
         HAL_RTC_SetDate(&hrtc, &date, RTC_FORMAT_BCD);
 
+        RTC_Store_DateWeekDayIntoBkpReg(&date);
         HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, 0x32F2);
     }
 }
-
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
@@ -238,7 +281,6 @@ void get_Time()
 	            BCD2DEC(gDate.Year),
 				WeekDayToStr(gDate.WeekDay)
 				);
-
 }
 
 void display_time(void)
@@ -248,12 +290,15 @@ void display_time(void)
 	lcd_send_cmd(0xc0);
 	lcd_send_string(date);
 }
+
+
 /* USER CODE END 0 */
 
 /**
   * @brief  The application entry point.
   * @retval int
   */
+#define RTC_MAGIC 0x32F2
 int main(void)
 {
 
@@ -288,13 +333,22 @@ int main(void)
   HAL_UART_Receive_IT(&huart1, (uint8_t *)&uart_rx_char, 1);
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-#define STEFANI
-  if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != 0x32F2) //
+
+  if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != RTC_MAGIC) //
   {
-//	  set_time();
-//	   set_timeFromCompile();
+	  printf("First boot!\r\n");
+
+	  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, RTC_MAGIC);
+  }
+  else
+  {
+	  printf("Backup register survived reset\r\n");
+	  RTC_DateTypeDef date ={0};
+	  RTC_LoadDateFromBkpReg(&date);
+	  HAL_RTC_SetDate(&hrtc, &date, RTC_FORMAT_BCD);
   }
   static uint32_t last = 0;
+
   while (1)
   {
     /* USER CODE END WHILE */
