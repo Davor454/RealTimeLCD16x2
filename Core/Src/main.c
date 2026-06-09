@@ -55,7 +55,7 @@ extern UART_HandleTypeDef huart1;
 	uint8_t uart_index = 0;
 /* USER CODE BEGIN PV */
 	char time[10];
-	char date[10];
+	char date[16];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -202,10 +202,25 @@ void set_alarm(void)
 	  	  }
 }
 
+const char* WeekDayToStr(uint8_t weekday)
+{
+	switch(weekday)
+	{
+	case RTC_WEEKDAY_MONDAY: return "Mon";
+	case RTC_WEEKDAY_TUESDAY: return "Tue";
+	case RTC_WEEKDAY_WEDNESDAY: return "Wed";
+	case RTC_WEEKDAY_THURSDAY: return "Thu";
+	case RTC_WEEKDAY_FRIDAY: return "Fri";
+	case RTC_WEEKDAY_SATURDAY: return "Sat";
+	case RTC_WEEKDAY_SUNDAY: return "Sun";
+	default:	return "???";
+	}
+}
+
 void get_Time()
 {
 	RTC_TimeTypeDef gTime;
-	    RTC_DateTypeDef gDate;
+	RTC_DateTypeDef gDate;
 
 	    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BCD);
 	    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BCD);
@@ -215,11 +230,13 @@ void get_Time()
 	            BCD2DEC(gTime.Minutes),
 	            BCD2DEC(gTime.Seconds));
 
-	    sprintf(date, "%02d-%02d-20%02d",
+
+
+	    sprintf(date, "%02d-%02d-20%02d--%s",
 	            BCD2DEC(gDate.Date),
 	            BCD2DEC(gDate.Month),
-	            BCD2DEC(gDate.Year)
-//				BCD2DEC(gDate.WeekDay)
+	            BCD2DEC(gDate.Year),
+				WeekDayToStr(gDate.WeekDay)
 				);
 
 }
