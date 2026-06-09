@@ -74,10 +74,10 @@ void HAL_MspInit(void)
 
   /** DISABLE: JTAG-DP Disabled and SW-DP Disabled
   */
-  __HAL_AFIO_REMAP_SWJ_DISABLE();
+
 
   /* USER CODE BEGIN MspInit 1 */
-
+  __HAL_AFIO_REMAP_SWJ_NOJTAG();      // disables JTAG, KEEPS SWD alive
   /* USER CODE END MspInit 1 */
 }
 

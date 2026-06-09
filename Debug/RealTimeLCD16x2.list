@@ -37,11 +37,11 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  00018309  00000000  00000000  00014669  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   000101ee  00000000  00000000  0002c972  2**0
+ 17 .debug_line   000101ec  00000000  00000000  0002c972  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    00086ecd  00000000  00000000  0003cb60  2**0
+ 18 .debug_str    00086ecd  00000000  00000000  0003cb5e  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000c3a2d  2**0
+ 19 .comment      00000043  00000000  00000000  000c3a2b  2**0
                   CONTENTS, READONLY
  20 .debug_frame  00003328  00000000  00000000  000c3a70  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -1171,12 +1171,12 @@ void HAL_MspInit(void)
  80007a6:	f003 5380 	and.w	r3, r3, #268435456	@ 0x10000000
  80007aa:	607b      	str	r3, [r7, #4]
  80007ac:	687b      	ldr	r3, [r7, #4]
-
-  /* System interrupt init*/
-
   /** DISABLE: JTAG-DP Disabled and SW-DP Disabled
   */
-  __HAL_AFIO_REMAP_SWJ_DISABLE();
+
+
+  /* USER CODE BEGIN MspInit 1 */
+  __HAL_AFIO_REMAP_SWJ_NOJTAG();      // disables JTAG, KEEPS SWD alive
  80007ae:	4b0a      	ldr	r3, [pc, #40]	@ (80007d8 <HAL_MspInit+0x60>)
  80007b0:	685b      	ldr	r3, [r3, #4]
  80007b2:	60fb      	str	r3, [r7, #12]
@@ -1184,14 +1184,11 @@ void HAL_MspInit(void)
  80007b6:	f023 63e0 	bic.w	r3, r3, #117440512	@ 0x7000000
  80007ba:	60fb      	str	r3, [r7, #12]
  80007bc:	68fb      	ldr	r3, [r7, #12]
- 80007be:	f043 6380 	orr.w	r3, r3, #67108864	@ 0x4000000
+ 80007be:	f043 7300 	orr.w	r3, r3, #33554432	@ 0x2000000
  80007c2:	60fb      	str	r3, [r7, #12]
  80007c4:	4a04      	ldr	r2, [pc, #16]	@ (80007d8 <HAL_MspInit+0x60>)
  80007c6:	68fb      	ldr	r3, [r7, #12]
  80007c8:	6053      	str	r3, [r2, #4]
-
-  /* USER CODE BEGIN MspInit 1 */
-
   /* USER CODE END MspInit 1 */
 }
  80007ca:	bf00      	nop
