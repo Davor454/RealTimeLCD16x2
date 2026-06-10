@@ -104,9 +104,14 @@ void lcd_put_cursor(int row, int col)
 }
 
 // Function to send a string to the LCD
-void lcd_send_string(char *str)
+void lcd_send_string(const char *str)
 {
     while (*str) lcd_send_data(*str++); // Send each character of the string
+}
+
+void lcd_send_char(char c) {
+    char str[2] = {c, '\0'};
+    lcd_send_string(str);
 }
 
 // Function to scan I2C addresses

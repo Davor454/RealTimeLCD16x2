@@ -4,4 +4,5 @@
 ../Core/Src/i2c_lcd.c:82:6:lcd_clear	8	static
 ../Core/Src/i2c_lcd.c:92:6:lcd_put_cursor	16	static
 ../Core/Src/i2c_lcd.c:107:6:lcd_send_string	16	static
-../Core/Src/i2c_lcd.c:113:9:scan_i2c_address	16	static
+../Core/Src/i2c_lcd.c:112:6:lcd_send_char	24	static
+../Core/Src/i2c_lcd.c:118:9:scan_i2c_address	16	static

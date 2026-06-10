@@ -59,7 +59,7 @@ HAL_StatusTypeDef lcd_send_data(uint8_t data);
  *
  * This function sends a null-terminated string to the LCD to be displayed.
  */
-void lcd_send_string(char *str);
+void lcd_send_string(const char *str);
 
 /**
  * @brief Sets the cursor position on the LCD

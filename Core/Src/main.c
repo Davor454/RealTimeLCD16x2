@@ -32,16 +32,18 @@
 #include <string.h>
 #include <stdlib.h>
 /* USER CODE END Includes */
-#define STEFANI
+
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define BCD2DEC(x) (((x) >> 4) * 10 + ((x) & 0x0F))
-//#define DEC2BCD(x) ((((x) / 10) << 4) | ((x) % 10))
+
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define STEFANI
+#define BCD2DEC(x) (((x) >> 4) * 10 + ((x) & 0x0F))
+//#define DEC2BCD(x) ((((x) / 10) << 4) | ((x) % 10))
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,19 +57,26 @@ extern UART_HandleTypeDef huart1;
 	char uart_buffer[40];
 	uint8_t uart_index = 0;
 /* USER CODE BEGIN PV */
-	char time[10];
+	char time[16];
 	char date[16];
+	char hum_buffer[10]; // increased size to avoid overflow
+	uint8_t Rh_byte1, Rh_byte2, Temp_byte1, Temp_byte2;
+	uint16_t SUM;
+	uint8_t Presence = 0;
+	int Temperature = 0;
+	int Humidity = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
+
+/* USER CODE BEGIN PFP */
 void SystemClock_Config(void);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 void parse_and_set_time(char *str);
-/* USER CODE BEGIN PFP */
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
+
 /* USER CODE BEGIN 0 */
 /*Store date and weekday int BKP register*/
 static void RTC_Store_DateWeekDayIntoBkpReg(RTC_DateTypeDef* dateRtc)
@@ -100,14 +109,25 @@ static void RTC_LoadDateFromBkpReg(RTC_DateTypeDef* dateRtc)
 	memcpy( dateRtc, &dateToStore, sizeof(dateToStore) );
 }
 
-//static uint8_t calculate_weekday(int y, int m, int d)
-//{
-//    static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
-//    if (m < 3) y--;
-//    int dow = (y + y/4 - y/100 + y/400 + t[m-1] + d) % 7;
-//    // dow: 0=Sunday, HAL: Mon=1...Sun=7
-//    return (dow == 0) ? RTC_WEEKDAY_SUNDAY : dow;
-//}
+/*CUSTOM CHARACTER CREATION FOR CELSIUS*/
+
+void LCD_CreateCustomChar() {
+	uint8_t degree_char[8] = {
+	    0x00,
+	    0x06,
+	    0x09,
+	    0x09,
+	    0x06,
+	    0x00,
+	    0x00,
+	    0x00
+	};
+    // Load custom char at location 0
+    lcd_send_cmd(0x40); // Set CGRAM address to 0
+    for (int i = 0; i < 8; i++) {
+    	lcd_send_char(degree_char[i]);
+    }
+}
 
 void parse_and_set_time(char *str)
 {
@@ -262,33 +282,56 @@ const char* WeekDayToStr(uint8_t weekday)
 
 void get_Time()
 {
-	RTC_TimeTypeDef gTime;
-	RTC_DateTypeDef gDate;
+    RTC_TimeTypeDef gTime;
+    RTC_DateTypeDef gDate;
 
-	    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BCD);
-	    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BCD);
+    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BCD);
+    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BCD);
 
-	    sprintf(time, "%02d:%02d:%02d",//add temperature --%d°C
-	            BCD2DEC(gTime.Hours),
-	            BCD2DEC(gTime.Minutes),
-	            BCD2DEC(gTime.Seconds));
+    sprintf(time, "%02d:%02d:%02d---T:%02d", //-H:%02d%%
+            BCD2DEC(gTime.Hours),
+            BCD2DEC(gTime.Minutes),
+            BCD2DEC(gTime.Seconds),
+			Temperature);
 
 
 
-	    sprintf(date, "%02d-%02d-20%02d--%s",
-	            BCD2DEC(gDate.Date),
-	            BCD2DEC(gDate.Month),
-	            BCD2DEC(gDate.Year),
-				WeekDayToStr(gDate.WeekDay)
-				);
+    sprintf(date, "%02d-%02d-20%02d---%s",
+            BCD2DEC(gDate.Date),
+            BCD2DEC(gDate.Month),
+            BCD2DEC(gDate.Year),
+            WeekDayToStr(gDate.WeekDay));
+
+    // Now display `display_buffer` and `date` separately on LCD
 }
 
 void display_time(void)
 {
 	lcd_send_cmd(0x80);
 	lcd_send_string(time);
+	lcd_send_char(0);
+	lcd_send_char('C');
 	lcd_send_cmd(0xc0);
 	lcd_send_string(date);
+}
+
+void display_date(void)
+{
+	lcd_send_cmd(0xc0);
+	lcd_send_string(date);
+}
+
+void display_humidity(void)
+{
+	lcd_send_cmd(0x88);
+	uint8_t i;
+	for(i = 8; i< 16; i++)
+	{
+		lcd_send_char(' ');
+	}
+	sprintf(hum_buffer, "-H:%02d%%", Humidity);
+	lcd_send_cmd(0x88);
+	lcd_send_string(hum_buffer);
 }
 
 static uint8_t DaysInMonth(uint8_t month, uint16_t year)
@@ -320,38 +363,6 @@ static uint8_t DaysInMonth(uint8_t month, uint16_t year)
     return 30;
 }
 
-/* Not needed
- * static void IncrementDate(RTC_DateTypeDef *date)
-{
-    uint8_t day   = BCD2DEC(date->Date);
-    uint8_t month = BCD2DEC(date->Month);
-    uint8_t year  = BCD2DEC(date->Year);
-
-    day++;
-
-    if(day > DaysInMonth(month, year))
-    {
-        day = 1;
-        month++;
-
-        if(month > 12)
-        {
-            month = 1;
-            year++;
-        }
-    }
-
-    date->Date  = DEC2BCD(day);
-    date->Month = DEC2BCD(month);
-    date->Year  = DEC2BCD(year);
-
-    date->WeekDay++;
-
-    if(date->WeekDay > RTC_WEEKDAY_SUNDAY)
-    {
-        date->WeekDay = RTC_WEEKDAY_MONDAY;
-    }
-}*/
 
 RTC_TimeTypeDef prevTime = {0};
 void RTC_CheckDateIncrement(void)
@@ -377,6 +388,81 @@ void RTC_CheckDateIncrement(void)
 
 
 }
+
+void delay_us (uint16_t us)
+{
+    __HAL_TIM_SET_COUNTER(&htim1, 0);  // Clear timer counter (Replace htim1 if using another timer)
+    while (__HAL_TIM_GET_COUNTER(&htim1) < us); // Wait until counter reaches target microseconds
+}
+
+void Set_Pin_Output (GPIO_TypeDef *GPIOx, uint16_t Pin)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // Push-pull output
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
+}
+
+void Set_Pin_Input (GPIO_TypeDef *GPIOx, uint16_t Pin)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;     // Floating input
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
+}
+
+uint8_t DHT11_Start (void)
+{
+    uint8_t Response = 0;
+    Set_Pin_Output(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin);   // Set pin as output
+    HAL_GPIO_WritePin(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin, GPIO_PIN_RESET); // Pull pin LOW
+    HAL_Delay(18);                                        // Wait 18 milliseconds
+    HAL_GPIO_WritePin(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin, GPIO_PIN_SET);   // Pull pin HIGH
+    delay_us(20);                                         // Wait 20 microseconds
+
+    Set_Pin_Input(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin);    // Set pin as input
+    delay_us(40);
+
+    if (!(HAL_GPIO_ReadPin(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin))) // Check if pin is LOW
+    {
+        delay_us(80);
+        if ((HAL_GPIO_ReadPin(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin))) Response = 1; // Check if pin goes HIGH
+        else Response = -1;
+    }
+
+    // Wait for the pin to go back low before reading data bits
+    uint16_t timeout = 0;
+    while ((HAL_GPIO_ReadPin(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin)) && timeout < 100) {
+        delay_us(1);
+        timeout++;
+    }
+
+    return Response;
+}
+
+uint8_t DHT11_Read (void)
+{
+    uint8_t i, j;
+    for (j=0; j<8; j++)
+    {
+        while (!(HAL_GPIO_ReadPin(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin))); // Wait for pin to go HIGH
+        delay_us(40); // Wait for 40 microseconds
+
+        if (!(HAL_GPIO_ReadPin(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin))) // If pin is LOW, bit is 0
+        {
+            i &= ~(1<<(7-j));
+        }
+        else // If pin is still HIGH, bit is 1
+        {
+            i |= (1<<(7-j));
+            while ((HAL_GPIO_ReadPin(DHT11_PIN_GPIO_Port, DHT11_PIN_Pin))); // Wait for pin to go LOW
+        }
+    }
+    return i;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -415,6 +501,7 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   lcd_init();
+  LCD_CreateCustomChar();
   /* USER CODE END 2 */
   HAL_UART_Receive_IT(&huart1, (uint8_t *)&uart_rx_char, 1);
   /* Infinite loop */
@@ -433,7 +520,11 @@ int main(void)
 	  RTC_LoadDateFromBkpReg(&date);
 	  HAL_RTC_SetDate(&hrtc, &date, RTC_FORMAT_BCD);
   }
-  static uint32_t last = 0;
+  static uint32_t last_clock_tick = 0;
+  static uint32_t last_dht_tick = 0;//? maybe not needed
+  //start timer TIM1
+
+  HAL_TIM_Base_Start(&htim1);
 
   while (1)
   {
@@ -447,13 +538,36 @@ int main(void)
 #endif
 //	  lcd_put_cursor(0, 0);
 //	  lcd_send_string("Hello Stefani <3!");
-		if (HAL_GetTick() - last >= 1000) {
-			last = HAL_GetTick();
+
+	  if(HAL_GetTick() - last_dht_tick >= 2000) // read every 2 seconds
+	  {
+		  last_dht_tick = HAL_GetTick();
+
+		  Presence = DHT11_Start();
+
+		  if(Presence == 1)
+		  {
+			  Rh_byte1 = DHT11_Read();
+			  Rh_byte2 = DHT11_Read();
+			  Temp_byte1 = DHT11_Read();
+			  Temp_byte2 = DHT11_Read();
+			  SUM = DHT11_Read();
+			  if (SUM == (Rh_byte1 + Rh_byte2 + Temp_byte1 + Temp_byte2))
+			  {
+				  Humidity = Rh_byte1;
+				  Temperature = Temp_byte1;
+			  }
+		  }
+	  }
+
+	  if (HAL_GetTick() - last_clock_tick >= 1000) {// it's updated every 1 second(1000ms)
+			last_clock_tick = HAL_GetTick();
 
 			RTC_CheckDateIncrement();//condition is true every 1000 ms or 1 second
 			get_Time();
 			display_time();
-			HAL_Delay(500);
+			/*DONT USE HAL_DELAY functions it messes up the seconds clock while displaying
+			* INSTEAD REPLACE display_time function with a STATE MACHINE*/
 		}
     /* USER CODE BEGIN 3 */
   }
