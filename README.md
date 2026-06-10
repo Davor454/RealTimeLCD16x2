@@ -10,6 +10,8 @@ Once the date, time and day of week is set using the python script timeSender wi
 USART1 of the board, the LCD 2x16 will display the time date and day of week even after a power cycle(restart).
 I saved the values of the rtc date and day of week into backup registers, and i read them back on every boot, but first I check if
 weather this is the First boot using a magic number written on the first boot in DR1 backup register.
+--------------------------------------------------------------------------------------------------------------------------------------
+Added Temperature and Humidity Sensor and display of said temperature on LCD 16x2
 
 TODO: call the python script from the project not from cmd; implement alarm with buzzer
 implement RFID to light up green diode on OK and 1 beep, red diode and long beep on NOTOK
