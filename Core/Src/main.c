@@ -22,7 +22,7 @@
 #include "rtc.h"
 #include "usart.h"
 #include "gpio.h"
-
+#include "tim.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "i2c_lcd.h"
@@ -36,7 +36,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define BCD2DEC(x) (((x) >> 4) * 10 + ((x) & 0x0F))
-
+//#define DEC2BCD(x) ((((x) / 10) << 4) | ((x) % 10))
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -100,18 +100,18 @@ static void RTC_LoadDateFromBkpReg(RTC_DateTypeDef* dateRtc)
 	memcpy( dateRtc, &dateToStore, sizeof(dateToStore) );
 }
 
-static uint8_t calculate_weekday(int y, int m, int d)
-{
-    static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
-    if (m < 3) y--;
-    int dow = (y + y/4 - y/100 + y/400 + t[m-1] + d) % 7;
-    // dow: 0=Sunday, HAL: Mon=1...Sun=7
-    return (dow == 0) ? RTC_WEEKDAY_SUNDAY : dow;
-}
+//static uint8_t calculate_weekday(int y, int m, int d)
+//{
+//    static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+//    if (m < 3) y--;
+//    int dow = (y + y/4 - y/100 + y/400 + t[m-1] + d) % 7;
+//    // dow: 0=Sunday, HAL: Mon=1...Sun=7
+//    return (dow == 0) ? RTC_WEEKDAY_SUNDAY : dow;
+//}
 
 void parse_and_set_time(char *str)
 {
-    int y, m, d, hh, mm, ss, weekday;
+    int y, m, d, hh, mm, ss;
 
     if (sscanf(str, "T:%d-%d-%d %d:%d:%d",
                &y, &m, &d, &hh, &mm, &ss) == 6)
@@ -124,7 +124,7 @@ void parse_and_set_time(char *str)
 		time.Seconds = ((ss / 10) << 4) | (ss % 10);
 
 		date.Date  = ((d / 10) << 4) | (d % 10);
-		date.Month = date.Month = ((m / 10) << 4) | (m % 10); //m;
+		date.Month = ((m / 10) << 4) | (m % 10); //m;
 		date.Year  = ((y - 2000) / 10 << 4) | ((y - 2000) % 10);
 //        date.WeekDay = weekday;
 
@@ -268,7 +268,7 @@ void get_Time()
 	    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BCD);
 	    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BCD);
 
-	    sprintf(time, "%02d:%02d:%02d",
+	    sprintf(time, "%02d:%02d:%02d",//add temperature --%d°C
 	            BCD2DEC(gTime.Hours),
 	            BCD2DEC(gTime.Minutes),
 	            BCD2DEC(gTime.Seconds));
@@ -291,7 +291,92 @@ void display_time(void)
 	lcd_send_string(date);
 }
 
+static uint8_t DaysInMonth(uint8_t month, uint16_t year)
+{
+    switch(month)
+    {
+        case 1: case 3: case 5: case 7:
+        case 8: case 10: case 12:
+            return 31;
 
+        case 4: case 6: case 9: case 11:
+            return 30;
+
+        case 2:
+        {
+            uint16_t fullYear = 2000 + year;
+
+            if((fullYear % 400 == 0) ||
+               ((fullYear % 4 == 0) &&
+                (fullYear % 100 != 0)))
+            {
+                return 29;
+            }
+
+            return 28;
+        }
+    }
+
+    return 30;
+}
+
+/* Not needed
+ * static void IncrementDate(RTC_DateTypeDef *date)
+{
+    uint8_t day   = BCD2DEC(date->Date);
+    uint8_t month = BCD2DEC(date->Month);
+    uint8_t year  = BCD2DEC(date->Year);
+
+    day++;
+
+    if(day > DaysInMonth(month, year))
+    {
+        day = 1;
+        month++;
+
+        if(month > 12)
+        {
+            month = 1;
+            year++;
+        }
+    }
+
+    date->Date  = DEC2BCD(day);
+    date->Month = DEC2BCD(month);
+    date->Year  = DEC2BCD(year);
+
+    date->WeekDay++;
+
+    if(date->WeekDay > RTC_WEEKDAY_SUNDAY)
+    {
+        date->WeekDay = RTC_WEEKDAY_MONDAY;
+    }
+}*/
+
+RTC_TimeTypeDef prevTime = {0};
+void RTC_CheckDateIncrement(void)
+{
+	RTC_TimeTypeDef currentTime;
+	RTC_DateTypeDef currentDate;
+
+
+	 HAL_RTC_GetTime(&hrtc, &currentTime, RTC_FORMAT_BCD);
+	 HAL_RTC_GetDate(&hrtc, &currentDate, RTC_FORMAT_BCD);
+
+	 if(prevTime.Hours == 0x23 &&
+	    prevTime.Minutes == 0x59 &&
+		prevTime.Seconds == 0x59 &&
+		currentTime.Hours == 0x0 &&
+		currentTime.Minutes == 0x0)
+	 {
+//		 IncrementDate(&currentDate);
+		 HAL_RTC_SetDate(&hrtc, &currentDate, RTC_FORMAT_BCD);
+		 RTC_Store_DateWeekDayIntoBkpReg(&currentDate);
+	 }
+	 prevTime = currentTime;
+
+
+}
 /* USER CODE END 0 */
 
 /**
@@ -327,6 +412,7 @@ int main(void)
   MX_I2C1_Init();
   MX_RTC_Init();
   MX_USART1_UART_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   lcd_init();
   /* USER CODE END 2 */
@@ -362,6 +448,9 @@ int main(void)
 //	  lcd_put_cursor(0, 0);
 //	  lcd_send_string("Hello Stefani <3!");
 		if (HAL_GetTick() - last >= 1000) {
+			last = HAL_GetTick();
+
+			RTC_CheckDateIncrement();//condition is true every 1000 ms or 1 second
 			get_Time();
 			display_time();
 			HAL_Delay(500);

@@ -955,6 +955,7 @@ HAL_StatusTypeDef HAL_RTC_SetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDat
   /* WeekDay set by user can be ignored because automatically calculated */
   hrtc->DateToUpdate.WeekDay = RTC_WeekDayNum(hrtc->DateToUpdate.Year, hrtc->DateToUpdate.Month, hrtc->DateToUpdate.Date);
   sDate->WeekDay = hrtc->DateToUpdate.WeekDay;
+
   /* Reset time to be aligned on the same day */
   /* Read the time counter*/
   counter_time = RTC_ReadTimeCounter(hrtc);
