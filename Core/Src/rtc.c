@@ -116,5 +116,14 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* rtcHandle)
 }
 
 /* USER CODE BEGIN 1 */
+void RTC_SaveDayCounter(void)
+{
+    uint32_t days = RTC_ReadTimeCounter(&hrtc) / 86400;
 
+    HAL_RTCEx_BKUPWrite(
+        &hrtc,
+        RTC_BKP_DR10,
+        days
+    );
+}
 /* USER CODE END 1 */

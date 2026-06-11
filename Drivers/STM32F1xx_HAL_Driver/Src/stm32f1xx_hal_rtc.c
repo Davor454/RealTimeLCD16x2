@@ -222,7 +222,7 @@
 /** @defgroup RTC_Private_Functions RTC Private Functions
   * @{
   */
-static uint32_t           RTC_ReadTimeCounter(RTC_HandleTypeDef *hrtc);
+uint32_t           RTC_ReadTimeCounter(RTC_HandleTypeDef *hrtc);
 static HAL_StatusTypeDef  RTC_WriteTimeCounter(RTC_HandleTypeDef *hrtc, uint32_t TimeCounter);
 static uint32_t           RTC_ReadAlarmCounter(RTC_HandleTypeDef *hrtc);
 static HAL_StatusTypeDef  RTC_WriteAlarmCounter(RTC_HandleTypeDef *hrtc, uint32_t AlarmCounter);
@@ -950,6 +950,7 @@ HAL_StatusTypeDef HAL_RTC_SetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDat
     hrtc->DateToUpdate.Year  = RTC_Bcd2ToByte(sDate->Year);
     hrtc->DateToUpdate.Month = RTC_Bcd2ToByte(sDate->Month);
     hrtc->DateToUpdate.Date  = RTC_Bcd2ToByte(sDate->Date);
+//    hrtc->DateToUpdate.WeekDay = RTC_Bcd2ToByte(sDate->WeekDay);
   }
 
   /* WeekDay set by user can be ignored because automatically calculated */
@@ -1585,7 +1586,7 @@ HAL_StatusTypeDef HAL_RTC_WaitForSynchro(RTC_HandleTypeDef *hrtc)
   *                the configuration information for RTC.
   * @retval Time counter
   */
-static uint32_t RTC_ReadTimeCounter(RTC_HandleTypeDef *hrtc)
+uint32_t RTC_ReadTimeCounter(RTC_HandleTypeDef *hrtc)
 {
   uint16_t high1 = 0U, high2 = 0U, low = 0U;
   uint32_t timecounter = 0U;

@@ -39,6 +39,7 @@ extern I2C_HandleTypeDef hi2c1;
 /* USER CODE END Private defines */
 
 void MX_I2C1_Init(void);
+void lcd_send_char(char c);
 
 /* USER CODE BEGIN Prototypes */
 
