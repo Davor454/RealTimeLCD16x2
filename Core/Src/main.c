@@ -53,7 +53,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-extern UART_HandleTypeDef huart1;
+	extern UART_HandleTypeDef huart1;
 	char uart_rx_char;
 	char uart_buffer[40];
 	uint8_t uart_index = 0;
@@ -67,6 +67,9 @@ extern UART_HandleTypeDef huart1;
 	uint8_t Presence = 0;
 	int Temperature = 0;
 	int Humidity = 0;
+
+RTC_TimeTypeDef prevTime = {0};
+RTC_DateTypeDef prevDate = {0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -336,80 +339,13 @@ void display_humidity(void)
 	lcd_send_cmd(0x88);
 	lcd_send_string(hum_buffer);
 }
-/* Not needed
-static uint8_t DaysInMonth(uint8_t month, uint16_t year)
-{
-    switch(month)
-    {
-        case 1: case 3: case 5: case 7:
-        case 8: case 10: case 12:
-            return 31;
 
-        case 4: case 6: case 9: case 11:
-            return 30;
-
-        case 2:
-        {
-            uint16_t fullYear = 2000 + year;
-
-            if((fullYear % 400 == 0) ||
-               ((fullYear % 4 == 0) &&
-                (fullYear % 100 != 0)))
-            {
-                return 29;
-            }
-
-            return 28;
-        }
-    }
-
-    return 30;
-}
-
-
-static void IncrementDate(RTC_DateTypeDef *date)
-{
-    uint8_t day   = BCD2DEC(date->Date);
-    uint8_t month = BCD2DEC(date->Month);
-    uint8_t year  = BCD2DEC(date->Year);
-
-    day++;
-
-    if(day > DaysInMonth(month, year))
-    {
-        day = 1;
-        month++;
-
-        if(month > 12)
-        {
-            month = 1;
-            year++;
-        }
-    }
-
-    date->Date  = DEC2BCD(day);
-    date->Month = DEC2BCD(month);
-    date->Year  = DEC2BCD(year);
-
-    date->WeekDay++;
-
-    if(date->WeekDay > RTC_WEEKDAY_SUNDAY)
-    {
-        date->WeekDay = RTC_WEEKDAY_MONDAY;
-    }
-}
-	Not needed
-*/
-RTC_TimeTypeDef prevTime = {0};
-//static RTC_DateTypeDef lastDate ={0};
 void RTC_CheckDateIncrement(void)
 {
 	RTC_TimeTypeDef currentTime;
 	RTC_DateTypeDef currentDate;
 
-
 	 HAL_RTC_GetTime(&hrtc, &currentTime, RTC_FORMAT_BCD);
-//	 HAL_RTC_GetDate(&hrtc, &currentDate, RTC_FORMAT_BCD);
 
 	 if(prevTime.Hours == 0x23 &&
 	    prevTime.Minutes == 0x59 &&
@@ -418,18 +354,26 @@ void RTC_CheckDateIncrement(void)
 		currentTime.Minutes == 0x0)
 	 {
 		 HAL_RTC_GetDate(&hrtc, &currentDate, RTC_FORMAT_BCD);
-//		 IncrementDate(&currentDate);
-//		 if(memcmp(&currentDate, &lastDate, sizeof(RTC_DateTypeDef)) !=0 )
-//		 {
-//			 RTC_Store_DateWeekDayIntoBkpReg(&currentDate);
-//			 lastDate = currentDate;
-//		 }
-		 HAL_RTC_SetDate(&hrtc, &currentDate, RTC_FORMAT_BCD);
+
+//		 HAL_RTC_SetDate(&hrtc, &currentDate, RTC_FORMAT_BCD);
 		 RTC_Store_DateWeekDayIntoBkpReg(&currentDate);
 		 HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR10, RTC_ReadTimeCounter(&hrtc)/86400);
 	 }
 	 prevTime = currentTime;
+}
 
+void RTC_CheckDateIncrement_Days(void)
+{
+    RTC_DateTypeDef currentDate;
+
+    HAL_RTC_GetDate(&hrtc, &currentDate, RTC_FORMAT_BCD);
+
+    if(memcmp(&currentDate, &prevDate, sizeof(RTC_DateTypeDef)) != 0)
+    {
+        RTC_Store_DateWeekDayIntoBkpReg(&currentDate);
+
+        prevDate = currentDate;
+    }
 }
 
 void delay_us (uint16_t us)
@@ -513,28 +457,16 @@ void RTC_RestoreDateAfterReset(void)
 
     RTC_LoadDateFromBkpReg(&date);
 
-//    uint32_t saved_days =
-//        HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR10);
-
-    uint32_t current_days =
-        RTC_ReadTimeCounter(&hrtc) / 86400;
-
-//    uint32_t delta_days = current_days - saved_days;
-
-//    while(delta_days--)
-//    {
-// //       IncrementDate(&date);
-//    }
+//    uint32_t current_days = RTC_ReadTimeCounter(&hrtc) / 86400;
 
     HAL_RTC_SetDate(&hrtc, &date, RTC_FORMAT_BCD);
 
-    RTC_Store_DateWeekDayIntoBkpReg(&date);
-
-    HAL_RTCEx_BKUPWrite(
-        &hrtc,
-        RTC_BKP_DR10,
-        current_days
-    );
+    prevDate = date;
+//    RTC_CheckDateIncrement_Days();
+//
+//    RTC_Store_DateWeekDayIntoBkpReg(&date);
+//
+//    HAL_RTCEx_BKUPWrite(&hrtc,RTC_BKP_DR10,current_days);
 }
 /* USER CODE END 0 */
 
@@ -543,60 +475,6 @@ void RTC_RestoreDateAfterReset(void)
   * @retval int
   */
 #define RTC_MAGIC 0x32F2
-
-/*typedef enum
-{
-	DISPLAY_TEMPERATURE,
-	DISPLAY_HUMIDITY
-}display_state_t;
-
-display_state_t current_state = DISPLAY_TEMPERATURE;
-uint32_t last_switch_time = 0;
-const uint32_t display_duration = 1000; // 1 second in milliseconds
-
-void update_display_non_blocking(void) {
-    uint32_t current_time = HAL_GetTick(); // Your function to get current millis
-
-    switch (current_state) {
-        case DISPLAY_TEMPERATURE:
-            // Check if 1 second has passed
-            if (current_time - last_switch_time >= display_duration) {
-                // Clear temperature display area
-                lcd_send_cmd(0x88);
-                for (uint8_t i = 8; i < 16; i++) {
-                    lcd_send_char(' ');
-                }
-                // Switch to humidity display
-                current_state = DISPLAY_HUMIDITY;
-                last_switch_time = current_time;
-            } else {
-                // Display temperature
-                // Assuming get_Time() gives temperature
-                sprintf(temp_buffer, "T:%02dC", Temperature);
-                lcd_send_cmd(0x80); // Start of line 1
-                lcd_send_string(temp_buffer);
-            }
-            break;
-
-        case DISPLAY_HUMIDITY:
-            if (current_time - last_switch_time >= display_duration) {
-                // Clear humidity display area
-                lcd_send_cmd(0x88);
-                for (uint8_t i = 8; i < 16; i++) {
-                    lcd_send_char(' ');
-                }
-                // Switch back to temperature
-                current_state = DISPLAY_TEMPERATURE;
-                last_switch_time = current_time;
-            } else {
-                // Display humidity
-                sprintf(hum_buffer, "-H:%02d%%", Humidity);
-                lcd_send_cmd(0x88); // Position where humidity is shown
-                lcd_send_string(hum_buffer);
-            }
-            break;
-    }
-}*/
 
 int main(void)
 {
@@ -612,28 +490,31 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+  /* USER CODE BEGIN SysInit */
 
   /* Configure the system clock */
   SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
+
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_RTC_Init();
   MX_USART1_UART_Init();
   MX_TIM1_Init();
-  /* USER CODE BEGIN 2 */
   lcd_init();
+  /* USER CODE END Init */
+
+  /* USER CODE BEGIN 2 */
+
+  static uint32_t last_clock_tick = 0;
+  static uint32_t last_dht_tick = 0;//? maybe not needed
+
   LCD_CreateCustomChar();
-  /* USER CODE END 2 */
+
   HAL_UART_Receive_IT(&huart1, (uint8_t *)&uart_rx_char, 1);
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
 
   if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != RTC_MAGIC) //
   {
@@ -645,29 +526,21 @@ int main(void)
   {
 	  printf("Backup register survived reset\r\n");
 	  RTC_RestoreDateAfterReset();
-//	  RTC_DateTypeDef date ={0};
-//	  RTC_LoadDateFromBkpReg(&date);
-//	  RTC_CheckDateIncrement();
-//	  uint32_t saved_days = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR10);
-//	  uint32_t current_days =RTC_ReadTimeCounter(&hrtc) / 86400;
-//	  uint32_t delta = current_days - saved_days;
-//	  while(delta--)
-//	  {
-//		  IncrementDate(&date);
-//	  }
-//	  RTC_Store_DateWeekDayIntoBkpReg(&date);
-//	  HAL_RTCEx_BKUPWrite(&hrtc,RTC_BKP_DR10,current_days);
-//	  HAL_RTC_SetDate(&hrtc, &date, RTC_FORMAT_BCD);
+	  HAL_RTC_GetDate(&hrtc, &prevDate, RTC_FORMAT_BCD);
   }
-  static uint32_t last_clock_tick = 0;
-  static uint32_t last_dht_tick = 0;//? maybe not needed
-  //start timer TIM1
+
+  //START TIMER TIM1
 
   HAL_TIM_Base_Start(&htim1);
 
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+
+  /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
+	  /* USER CODE BEGIN 3 */
 #ifndef STEFANI
 	  lcd_put_cursor(0, 0);
 	  lcd_send_string("Hello Stefani <3!");
@@ -702,20 +575,19 @@ int main(void)
 	  if (HAL_GetTick() - last_clock_tick >= 1000) {// it's updated every 1 second(1000ms)
 			last_clock_tick = HAL_GetTick();
 
-			RTC_CheckDateIncrement();//condition is true every 1000 ms or 1 second
+			RTC_CheckDateIncrement_Days();//condition is true every 1000 ms or 1 second
 			get_Time();
-
-
 			display_time();
 //			update_display_non_blocking();
-			display_date();
+//			display_date();
 
 			/*DONT USE HAL_DELAY functions it messes up the seconds clock while displaying
 			* INSTEAD REPLACE display_time function with a STATE MACHINE*/
 		}
-    /* USER CODE BEGIN 3 */
+
+	  /* USER CODE END 3 */
   }
-  /* USER CODE END 3 */
+  /* USER CODE END WHILE */
 }
 
 /**
