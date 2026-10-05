@@ -134,6 +134,40 @@ void LCD_CreateCustomChar() {
     }
 }
 
+/* Gregorian leap-year rule: divisible by 4, except centuries not by 400. */
+static uint8_t IsLeapYear(uint16_t year)   // full year, e.g. 2024
+{
+    return (((year % 4U) == 0U) && ((year % 100U) != 0U)) || ((year % 400U) == 0U);
+}
+
+/* Number of days in a given month, with leap-year-aware February. */
+static uint8_t DaysInMonth(uint8_t month, uint16_t year)
+{
+    static const uint8_t days[12] = {31U,28U,31U,30U,31U,30U,31U,31U,30U,31U,30U,31U};
+
+    if ((month == 2U) && IsLeapYear(year))
+    {
+        return 29U;
+    }
+    return days[month - 1U];
+}
+
+/* Reject impossible calendar dates (incl. Feb 29 on non-leap years) before
+ * they reach the RTC. An invalid Feb day would otherwise wedge the HAL's
+ * day-rollover (RTC_DateUpdate) and the date would stop advancing. */
+static uint8_t IsValidDate(int year, int month, int day)
+{
+    if ((month < 1) || (month > 12))
+    {
+        return 0U;
+    }
+    if ((day < 1) || (day > (int)DaysInMonth((uint8_t)month, (uint16_t)year)))
+    {
+        return 0U;
+    }
+    return 1U;
+}
+
 void parse_and_set_time(char *str)
 {
     int y, m, d, hh, mm, ss;
@@ -141,6 +175,18 @@ void parse_and_set_time(char *str)
     if (sscanf(str, "T:%d-%d-%d %d:%d:%d",
                &y, &m, &d, &hh, &mm, &ss) == 6)//&y, &m, &d, &weekday, &hh, &mm, &ss) == 7)
     {
+        /* Validate before touching the RTC: a bad date (e.g. Feb 29 on a
+         * non-leap year, or Feb 30) would stall the HAL date rollover.
+         * The day of week is left for HAL_RTC_SetDate to compute from the
+         * validated Y/M/D, so it stays correct across the leap day too. */
+        if (!IsValidDate(y, m, d) ||
+            (hh < 0) || (hh > 23) ||
+            (mm < 0) || (mm > 59) ||
+            (ss < 0) || (ss > 59))
+        {
+            return;   // ignore malformed input, keep current RTC time/date
+        }
+
         RTC_TimeTypeDef time = {0};
         RTC_DateTypeDef date = {0};
 
@@ -455,18 +501,29 @@ void RTC_RestoreDateAfterReset(void)
 {
     RTC_DateTypeDef date = {0};
 
-    RTC_LoadDateFromBkpReg(&date);
+    RTC_LoadDateFromBkpReg(&date);   // saved date, in BCD
 
-//    uint32_t current_days = RTC_ReadTimeCounter(&hrtc) / 86400;
+    /* IMPORTANT: do NOT use HAL_RTC_SetDate() here.
+     * On the F1 the calendar is software-emulated: the seconds counter runs
+     * on VBAT while the board is off, but the date lives only in RAM
+     * (hrtc.DateToUpdate) and is lost on reset. HAL_RTC_SetDate() would trim
+     * the whole days the counter accumulated while powered off and throw them
+     * away, pinning the date to the saved value. That is why the date never
+     * advanced across a power-off that crossed midnight.
+     *
+     * Instead, seed the in-RAM date directly, then let HAL_RTC_GetDate()
+     * (via HAL_RTC_GetTime) read the counter, add every midnight that elapsed
+     * while we were off, and trim the counter back below 24h. */
+    hrtc.DateToUpdate.WeekDay = BCD2DEC(date.WeekDay);
+    hrtc.DateToUpdate.Month   = BCD2DEC(date.Month);
+    hrtc.DateToUpdate.Date    = BCD2DEC(date.Date);
+    hrtc.DateToUpdate.Year    = BCD2DEC(date.Year);
 
-    HAL_RTC_SetDate(&hrtc, &date, RTC_FORMAT_BCD);
+    /* Fold in the days elapsed while the board was off. */
+    HAL_RTC_GetDate(&hrtc, &prevDate, RTC_FORMAT_BCD);
 
-    prevDate = date;
-//    RTC_CheckDateIncrement_Days();
-//
-//    RTC_Store_DateWeekDayIntoBkpReg(&date);
-//
-//    HAL_RTCEx_BKUPWrite(&hrtc,RTC_BKP_DR10,current_days);
+    /* Persist the now-advanced date so backup stays in sync. */
+    RTC_Store_DateWeekDayIntoBkpReg(&prevDate);
 }
 /* USER CODE END 0 */
 

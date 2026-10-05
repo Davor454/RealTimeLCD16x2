@@ -2,7 +2,7 @@ import serial
 from datetime import datetime, time
 import time as time_module
 
-ser = serial.Serial("COM3", 115200, timeout=1)  # Change "COM3" to your actual COM port
+ser = serial.Serial("COM6", 115200, timeout=1)  # Change "COM3" to your actual COM port
 time_module.sleep(2)
 
 # Set the time to 23:59:59
