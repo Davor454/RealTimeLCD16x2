@@ -1,7 +1,7 @@
 # RealTimeLCD16x2
 Date and Time displayed on a LCD 2x16 using i2c and stm32F103R nucleo development board
 09.06.2026
-Added a external coin battery behind the STM board.
+Added an external coin battery behind the STM board.
 Wired the + of the battery connector to the right side
 of the SB45 (desoldered the 0 ohm resister on the SB45 before),
 and the - to the ground of the USER B1 button(GND is top right pin).
