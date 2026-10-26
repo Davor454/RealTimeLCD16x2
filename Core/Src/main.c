@@ -152,6 +152,57 @@ static uint8_t DaysInMonth(uint8_t month, uint16_t year)
     return days[month - 1U];
 }
 
+/* ---- Daylight Saving Time (EU rules) --------------------------------------
+ * RTC is kept in LOCAL STANDARD (winter) time; DST is derived from the date
+ * and applied only for display, so there is no state a power cut can corrupt. */
+
+/* Sakamoto's algorithm: 0=Sunday .. 6=Saturday. 'year' is full, e.g. 2026. */
+static uint8_t DayOfWeek(uint16_t year, uint8_t month, uint8_t day)
+{
+    static const uint8_t t[12] = {0,3,2,5,0,3,5,1,4,6,2,4};
+    if (month < 3U) year -= 1U;
+    return (uint8_t)((year + year/4U - year/100U + year/400U + t[month-1U] + day) % 7U);
+}
+
+/* Date (1..31) of the last Sunday in the given month. */
+static uint8_t LastSundayOfMonth(uint16_t year, uint8_t month)
+{
+    uint8_t last = DaysInMonth(month, year);
+    return (uint8_t)(last - DayOfWeek(year, month, last));  /* step back to Sunday */
+}
+
+/* 1 = DST (summer) in effect. 'hour' is the STANDARD-time hour. */
+static uint8_t IsEU_DST(uint16_t year, uint8_t month, uint8_t day, uint8_t hour)
+{
+    if ((month < 3U) || (month > 10U)) return 0U;   /* Jan,Feb,Nov,Dec */
+    if ((month > 3U) && (month < 10U)) return 1U;   /* Apr..Sep        */
+
+    if (month == 3U) {                              /* March: starts last Sun 02:00 */
+        uint8_t ls = LastSundayOfMonth(year, 3U);
+        if (day > ls) return 1U;
+        if (day < ls) return 0U;
+        return (hour >= 2U) ? 1U : 0U;
+    } else {                                        /* October: ends last Sun 02:00 */
+        uint8_t ls = LastSundayOfMonth(year, 10U);
+        if (day < ls) return 1U;
+        if (day > ls) return 0U;
+        return (hour < 2U) ? 1U : 0U;
+    }
+}
+
+/* Subtract one hour from a Y/M/D/h value, rolling back across midnight,
+ * month and year (leap-year aware). Used to convert an entered wall-clock
+ * time to the standard time that is stored in the RTC. */
+static void MinusOneHour(uint16_t *y, uint8_t *mo, uint8_t *d, uint8_t *h)
+{
+    if (*h > 0U) { (*h)--; return; }
+    *h = 23U;
+    if (*d > 1U) { (*d)--; return; }
+    if (*mo > 1U) { (*mo)--; } else { *mo = 12U; (*y)--; }
+    *d = DaysInMonth(*mo, *y);
+}
+
+
 /* Reject impossible calendar dates (incl. Feb 29 on non-leap years) before
  * they reach the RTC. An invalid Feb day would otherwise wedge the HAL's
  * day-rollover (RTC_DateUpdate) and the date would stop advancing. */
@@ -185,6 +236,14 @@ void parse_and_set_time(char *str)
             (ss < 0) || (ss > 59))
         {
             return;   // ignore malformed input, keep current RTC time/date
+        }
+
+        /* Entered value is local wall-clock; store STANDARD time so the
+         * display path (GetLocalDateTime) can re-add the DST offset. */
+        if (IsEU_DST((uint16_t)y, (uint8_t)m, (uint8_t)d, (uint8_t)hh)) {
+            uint16_t yy=(uint16_t)y; uint8_t mm=(uint8_t)m, dd=(uint8_t)d, hc=(uint8_t)hh;
+            MinusOneHour(&yy,&mm,&dd,&hc);
+            y=yy; m=mm; d=dd; hh=hc;
         }
 
         RTC_TimeTypeDef time = {0};
@@ -240,37 +299,36 @@ void set_timeFromCompile(void)
 	 sscanf(__TIME__, "%d:%d:%d", &hour, &minute, &second);
 	 sscanf(__DATE__, "%3s %d %d", month_str, &day, &year);
 
+	int mon = 0;
+	if      (!strcmp(month_str, "Jan")) mon = 1;
+	else if (!strcmp(month_str, "Feb")) mon = 2;
+	else if (!strcmp(month_str, "Mar")) mon = 3;
+	else if (!strcmp(month_str, "Apr")) mon = 4;
+	else if (!strcmp(month_str, "May")) mon = 5;
+	else if (!strcmp(month_str, "Jun")) mon = 6;
+	else if (!strcmp(month_str, "Jul")) mon = 7;
+	else if (!strcmp(month_str, "Aug")) mon = 8;
+	else if (!strcmp(month_str, "Sep")) mon = 9;
+	else if (!strcmp(month_str, "Oct")) mon = 10;
+	else if (!strcmp(month_str, "Nov")) mon = 11;
+	else if (!strcmp(month_str, "Dec")) mon = 12;
+	else return;   /* could not parse month */
+
+	/* __DATE__/__TIME__ is local wall-clock; store STANDARD time so the
+	 * display path (GetLocalDateTime) re-adds the DST offset. */
+	if (IsEU_DST((uint16_t)year, (uint8_t)mon, (uint8_t)day, (uint8_t)hour)) {
+		uint16_t yy=(uint16_t)year; uint8_t mm=(uint8_t)mon, dd=(uint8_t)day, hc=(uint8_t)hour;
+		MinusOneHour(&yy,&mm,&dd,&hc);
+		year=yy; mon=mm; day=dd; hour=hc;
+	}
+
 	 sTime.Hours = ((hour / 10) << 4) | (hour % 10);
 	sTime.Minutes = ((minute / 10) << 4) | (minute % 10);
 	sTime.Seconds = ((second / 10) << 4) | (second % 10);
 
 	sDate.Date = ((day / 10) << 4) | (day % 10);
 	sDate.Year = ((year - 2000) / 10 << 4) | ((year - 2000) % 10);
-
-	if (!strcmp(month_str, "Jan"))
-		sDate.Month = RTC_MONTH_JANUARY;
-	else if (!strcmp(month_str, "Feb"))
-		sDate.Month = RTC_MONTH_FEBRUARY;
-	else if (!strcmp(month_str, "Mar"))
-		sDate.Month = RTC_MONTH_MARCH;
-	else if (!strcmp(month_str, "Apr"))
-		sDate.Month = RTC_MONTH_APRIL;
-	else if (!strcmp(month_str, "May"))
-		sDate.Month = RTC_MONTH_MAY;
-	else if (!strcmp(month_str, "Jun"))
-		sDate.Month = RTC_MONTH_JUNE;
-	else if (!strcmp(month_str, "Jul"))
-		sDate.Month = RTC_MONTH_JULY;
-	else if (!strcmp(month_str, "Aug"))
-		sDate.Month = RTC_MONTH_AUGUST;
-	else if (!strcmp(month_str, "Sep"))
-		sDate.Month = RTC_MONTH_SEPTEMBER;
-	else if (!strcmp(month_str, "Oct"))
-		sDate.Month = RTC_MONTH_OCTOBER;
-	else if (!strcmp(month_str, "Nov"))
-		sDate.Month = RTC_MONTH_NOVEMBER;
-	else if (!strcmp(month_str, "Dec"))
-		sDate.Month = RTC_MONTH_DECEMBER;
+	sDate.Month = ((mon / 10) << 4) | (mon % 10);
 
 	HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD);
 	HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD);
@@ -332,30 +390,69 @@ const char* WeekDayToStr(uint8_t weekday)
 	}
 }
 
+/* Reads the RTC (standard time) and returns local wall-clock time/date with
+ * the DST offset already folded in. All fields binary. */
+static void GetLocalDateTime(RTC_TimeTypeDef *t, RTC_DateTypeDef *d)
+{
+    HAL_RTC_GetTime(&hrtc, t, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(&hrtc, d, RTC_FORMAT_BIN);   /* GetDate after GetTime */
+
+    uint16_t year = 2000U + d->Year;
+
+    if (IsEU_DST(year, d->Month, d->Date, t->Hours)) {
+        if (++t->Hours >= 24U) {                 /* +1h crossed midnight */
+            t->Hours = 0U;
+            if (d->Date < DaysInMonth(d->Month, year)) {
+                d->Date++;
+            } else {
+                d->Date = 1U;
+                if (d->Month < 12U) { d->Month++; }
+                else { d->Month = 1U; d->Year++; year++; }
+            }
+            d->WeekDay = DayOfWeek(year, d->Month, d->Date);
+            if (d->WeekDay == 0U) d->WeekDay = 7U;   /* 0=Sun -> HAL 7=Sun */
+        }
+    }
+}
+
 void get_Time()
 {
     RTC_TimeTypeDef gTime;
     RTC_DateTypeDef gDate;
 
-    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BCD);
-    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BCD);
+    GetLocalDateTime(&gTime, &gDate);            /* standard time + DST */
 
-    sprintf(time, "%02d:%02d:%02d---T:%02d", //-H:%02d%%
-            BCD2DEC(gTime.Hours),
-            BCD2DEC(gTime.Minutes),
-            BCD2DEC(gTime.Seconds),
-			Temperature);
-
-
+    sprintf(time, "%02d:%02d:%02d---T:%02d",
+            gTime.Hours, gTime.Minutes, gTime.Seconds, Temperature);
 
     sprintf(date, "%02d-%02d-20%02d---%s",
-            BCD2DEC(gDate.Date),
-            BCD2DEC(gDate.Month),
-            BCD2DEC(gDate.Year),
+            gDate.Date, gDate.Month, gDate.Year,
             WeekDayToStr(gDate.WeekDay));
-
-    // Now display `display_buffer` and `date` separately on LCD
 }
+//void get_Time()
+//{
+//    RTC_TimeTypeDef gTime;
+//    RTC_DateTypeDef gDate;
+//
+//    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BCD);
+//    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BCD);
+//
+//    sprintf(time, "%02d:%02d:%02d---T:%02d", //-H:%02d%%
+//            BCD2DEC(gTime.Hours),
+//            BCD2DEC(gTime.Minutes),
+//            BCD2DEC(gTime.Seconds),
+//			Temperature);
+//
+//
+//
+//    sprintf(date, "%02d-%02d-20%02d---%s",
+//            BCD2DEC(gDate.Date),
+//            BCD2DEC(gDate.Month),
+//            BCD2DEC(gDate.Year),
+//            WeekDayToStr(gDate.WeekDay));
+//
+//    // Now display `display_buffer` and `date` separately on LCD
+//}
 
 void display_time(void)
 {
